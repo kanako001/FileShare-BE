@@ -6,7 +6,7 @@ from flask_heroku import Heroku
 import io
 
 app = Flask(__name__)
-app.config["SQLALCHEMY_DATABASE_URI"] = "postgres://vttgxfznzoroxl:96addb733579a7ab0277ab0ea1f9d0c212acde720ca751335cc0272b2559d6c7@ec2-3-216-129-140.compute-1.amazonaws.com:5432/da3n83282a6hmi"
+app.config["SQLALCHEMY_DATABASE_URI"] = "postgres://qqklfkwebwjjnk:aef694d8410a2988448ef4344aa990fce983f8e33cbbb5445daa4d5f352edcac@ec2-54-197-254-117.compute-1.amazonaws.com:5432/de2svsd85sbcrd"
 
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
@@ -20,11 +20,13 @@ class File(db.Model):
   name = db.Column(db.String(), nullable=False)
   file_type = db.Column(db.String(), nullable=False)
   data = db.Column(db.LargeBinary, nullable=False )
+  user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
 
-  def __init__(self, name, file_type, data):
+  def __init__(self, name, file_type, data, user_id):
     self.name = name
     self.file_type = file_type
     self.data = data
+    self.user_id = user_id
 
 class FileSchema(ma.Schema):
   class Meta:
@@ -32,6 +34,23 @@ class FileSchema(ma.Schema):
 
 file_schema = FileSchema()
 files_schema = FileSchema(many=True)
+
+class User(db.Model):
+  id = db.Column(db.Integer, primary_key=True)
+  username = db.Column(db.String(20), nullable=False, unique=True)
+  password = db.Column(db.String(), nullable=False)
+
+  def __init__(self, username, password):
+    self.username = username
+    self.password = password
+    files = db.relationship("File", cascade="all, delete", backref="user", lazy="True")
+
+class UserSchema(ma.Schema):
+  class Meta:
+    fields = ("id", "username", "password")
+
+user_schema = UserSchema()
+users_schema = UserSchema(many=True)
 
 
 @app.route("/file/add", methods=["POST"])
@@ -58,6 +77,31 @@ def get_file(id):
          attachment_filename=file_data.name, 
          mimetype=file_data.file_type)
 
+
+@app.route("/user/create", methods=["POST"])
+def create_user():
+  if request.content_type != "application/json":
+    return jsonify("Error: Data must be sent as JSON")
+
+  post_data = request.get_json()
+  username = post_data.get("username")
+  password = post_data.get("password")
+
+  record = User(username, password)
+  db.session.add(record)
+  db.session.commit()
+
+  return jsonify("User created successfully")
+
+@app.route("/user/get", methods=["GET"])
+def get_all_users():
+  all_users = db.session.query(User).all()
+  return jsonify(users_schema.dump(all_users))
+
+@app.route("/user/get/<id>", methods=["GET"])
+def get_user_by_id(id):
+  user = db.session.query(User).filter(User.id == id).first
+  return jsonify(user_schema.dump(user))
 
 if __name__ == "__main__":
   app.run(debug=True)
