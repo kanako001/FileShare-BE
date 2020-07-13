@@ -32,7 +32,7 @@ class File(db.Model):
 
 class FileSchema(ma.Schema):
     class Meta:
-        fields = ("id", "name", "file_type")
+        fields = ("id", "name", "file_type", "user_id")
 
 file_schema = FileSchema()
 files_schema = FileSchema(many=True)
@@ -61,8 +61,11 @@ def add_file():
     name = request.form.get("name")
     file_type = request.form.get("type")
     data = request.files.get("data")
+    username = request.form.get("username")
 
-    new_file = File(name, file_type, data.read())
+    user_id = db.session.query(User.id).filter(User.username == username).first()
+
+    new_file = File(name, file_type, data.read(), user_id[0])
     db.session.add(new_file)
     db.session.commit()
 
@@ -71,6 +74,12 @@ def add_file():
 @app.route("/file/get/data", methods=["GET"])
 def get_file_data():
     file_data = db.session.query(File).all()
+    return jsonify(files_schema.dump(file_data))
+
+@app.route("/file/get/data/<username>", methods=["GET"])
+def get_file_data_by_username(username):
+    user_id = db.session.query(User.id).filter(User.username == username).first()[0]
+    file_data = db.session.query(File).filter(File.user_id == user_id).all()
     return jsonify(files_schema.dump(file_data))
 
 @app.route("/file/get/<id>", methods=["GET"])
@@ -96,6 +105,10 @@ def create_user():
     post_data = request.get_json()
     username = post_data.get("username")
     password = post_data.get("password")
+
+    username_check = db.session.query(User.username).filter(User.username == username).first()
+    if username_check is not None:
+        return jsonify("Username Taken")
 
     hashed_password = bcrypt.generate_password_hash(password).decode("utf8")
 
@@ -131,7 +144,7 @@ def verify_user():
 
     valid_password_check = bcrypt.check_password_hash(stored_password[0], password)
 
-    if valid_password_check == False: 
+    if valid_password_check == False:
         return jsonify("User NOT Verified")
 
     return jsonify("User Verified")
@@ -140,4 +153,3 @@ def verify_user():
 
 if __name__ == "__main__":
     app.run(debug=True)
-  
